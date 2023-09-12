@@ -1,0 +1,117 @@
+substitutions:
+  device_name: "esp-pwm"
+  friendly_name: "ESP PWM"
+  project_name: "madalena.epmw"
+  project_version: "2.0"
+  relay_restore_mode: RESTORE_DEFAULT_OFF
+
+esphome:
+  name: "${device_name}"
+  name_add_mac_suffix: false
+  project:
+    name: "${project_name}"
+    version: "${project_version}"
+
+esp8266:
+  board: esp8285
+  restore_from_flash: true
+
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "PcD0KMpUvcqK/x3rm6PfQTBziD+RQjMeL9NB6q36lac="
+  
+ota:
+
+wifi:
+  ssid: "Rede-IOT"
+  password: !secret iot_pass
+  manual_ip:
+    static_ip: 10.200.50.211
+    gateway: 10.200.50.1
+    subnet: 255.255.255.0
+  ap:
+    password: "garage_desk"
+
+web_server:
+  port: 80
+
+captive_portal:
+  
+binary_sensor:
+  - platform: status
+    name: "${friendly_name} Status"
+
+  - platform: gpio
+    pin:
+      number: 0
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} Power Button"
+    disabled_by_default: true
+    on_multi_click:
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 0.2s
+        then:
+          - light.toggle: garage_desk_led
+      - timing:
+          - ON for at least 4s
+        then:
+          - button.press: Reset
+
+sensor:
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+
+button:
+  - platform: factory_reset
+    name: Restart with Factory Default Settings
+    id: Reset
+            
+output:
+  - platform: esp8266_pwm
+    id: output_1
+    pin: 
+      number: GPIO4
+      inverted: true
+    frequency: 5000 Hz
+    min_power: 0.2
+    max_power: 1.0
+    zero_means_zero: true
+  - platform: esp8266_pwm
+    id: output_2
+    pin: GPIO12
+  - platform: esp8266_pwm
+    id: output_3
+    pin: GPIO14
+  - platform: esp8266_pwm
+    id: output_4
+    pin: GPIO13
+    
+light:
+  - platform: monochromatic
+    name: "Garage Desk PWM"
+    id: garage_desk_led
+    output: output_4
+    effects:
+      - pulse:
+      - random:
+      - strobe:
+      - flicker:
+
+fan:
+  - platform: speed
+    output: output_1
+    id: garage_fan_pwm
+    name: "Garage Fan PWM"
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} IP Address"
+      disabled_by_default: true

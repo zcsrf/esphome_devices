@@ -1,0 +1,108 @@
+esphome:
+  name: sdm_230
+  platform: ESP8266
+  board: nodemcu
+  includes:
+    - sdm/SDM_Config_User.h
+    - sdm/SDM.h
+    - sdm/sdm_esphome.h
+
+wifi:
+  ssid: "Rede-IOT"
+  password: !secret iot_pass
+
+  manual_ip:
+    static_ip: 192.168.1.211
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Sdm 230 Fallback Hotspot"
+
+uart:
+  tx_pin: TX
+  rx_pin: RX
+  baud_rate: 9600
+  stop_bits: 1
+
+sensor:
+# - platform: custom
+#   lambda: |-
+#     auto sdm_sensors = new SDMComponent();
+#     App.register_component(sdm_sensors);
+#     return {sdm_sensors->voltage_sensor, sdm_sensors->current_sensor, sdm_sensors->power_sensor, sdm_sensors->apparent_power_sensor, sdm_sensors->power_factor_sensor, sdm_sensors->phase_angle_sensor, sdm_sensors->line_frequency_sensor, sdm_sensors->energy_import_sensor};
+#   sensors:
+#     - name: "Voltage"
+#       unit_of_measurement: V
+#       device_class: "voltage"
+#       accuracy_decimals: 2
+#     - name: "Current"
+#       unit_of_measurement: A
+#       device_class: "current"
+#       accuracy_decimals: 2
+#     - name: "Power"
+#       unit_of_measurement: W
+#       device_class: "power"
+#       accuracy_decimals: 2
+#     - name: "Apparent Power"
+#       unit_of_measurement: VA
+#       accuracy_decimals: 2
+#     - name: "Power Factor"
+#       unit_of_measurement: PF
+#       device_class: "power_factor"
+#       accuracy_decimals: 2
+#     - name: "Phase Angle"
+#       unit_of_measurement: º
+#       accuracy_decimals: 2
+#     - name: "Line Frequency"
+#       unit_of_measurement: Hz
+#       accuracy_decimals: 2
+#     - name: "Energy import"
+#       unit_of_measurement: kWh
+#       device_class: "energy"
+#       accuracy_decimals: 2
+  - platform: sdm_meter
+    phase_a:
+      current:
+        name: "SDM230M Current"
+      voltage:
+        name: "SDM230M Voltage"
+      active_power:
+        name: "SDM230M Power"
+      power_factor:
+        name: "SDM230M Power Factor"
+      apparent_power:
+        name: "SDM230M Apparent Power"
+      reactive_power:
+        name: "SDM230M Reactive Power"
+      phase_angle:
+        name: "SDM230M Phase Angle"
+    frequency:
+      name: "SDM230M Frequency"
+    import_active_energy:
+      name: "SDM230M Import Active Energy"
+    export_active_energy:
+      name: "SDM230M Export Active Energy"
+    import_reactive_energy:
+      name: "SDM230M Import Reactive Energy"
+    export_reactive_energy:
+      name: "SDM230M Export Reactive Energy"
+    update_interval: 15s
+  - platform: wifi_signal
+    name: "WiFi Signal Sensor"
+    update_interval: 60s
+
+captive_portal:
+
+#logger:
+#  baud_rate: 0
+#  esp8266_store_log_strings_in_flash: False
+
+web_server:
+  port: 80
+
+# Enable Home Assistant API
+api:
+
+ota:

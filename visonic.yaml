@@ -1,0 +1,142 @@
+substitutions:
+  plug_name: "visionic"
+
+esphome:
+  name: visionic
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable Home Assistant API
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: "M7tQv2MVXSXFphhtnlNBdOpEq31k/9W0/M097s2gXlo="
+  services:
+    - service: trigger_siren1
+      then:
+        - switch.turn_on: relay1
+        - delay: 5s
+        - switch.turn_off: relay1
+    - service: trigger_siren2
+      then:
+        - switch.turn_on: relay2
+        - delay: 5s
+        - switch.turn_off: relay2
+
+ota:
+  password: "48d9823239d514b400b91088bfdd2373"
+ 
+web_server:
+  port: 80
+
+external_components:
+#  - source: github://thegroove/esphome-serial-server
+  - source: github://oxan/esphome-stream-server
+#  - source: github://joshuaspence/esphome-stream-server
+
+wifi:
+  ssid: "Rede-IOT"
+  password: !secret iot_pass
+  manual_ip:
+    static_ip: 10.200.50.212
+    gateway: 10.200.50.1
+    subnet: 255.255.255.0
+  ap:
+    password: "visonic_alarm"
+    ap_timeout: 600s
+  
+
+captive_portal:
+
+# Disable logging
+logger:
+  level: DEBUG
+  baud_rate: 0   # disables logging to the serial UART (as we are using it for other things)
+  
+  
+# Text sensors with general information
+text_sensor:
+  - platform: version
+    name: "${plug_name} Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${plug_name} IP"
+    ssid:
+      name: "${plug_name} SSID"
+    bssid:
+      name: "${plug_name} BSSID"
+
+button:
+  # Switch to restart the plug
+  - platform: restart
+    name: "${plug_name} Restart"
+
+esp32_ble_tracker:
+
+sensor:
+  - platform: wifi_signal
+    name: "${plug_name} WiFi Signal"
+    update_interval: 60s
+  - platform: xiaomi_hhccjcy01
+    mac_address: 'C4:7C:8D:6C:08:93'
+    temperature:
+      name: "Xiaomi HHCCJCY01 Temperature"
+    moisture:
+      name: "Xiaomi HHCCJCY01 Moisture"
+    illuminance:
+      name: "Xiaomi HHCCJCY01 Illuminance"
+    conductivity:
+      name: "Xiaomi HHCCJCY01 Soil Conductivity"
+    battery_level:
+      name: "Xiaomi HHCCJCY01 Battery Level"
+  - platform: xiaomi_cgg1
+    mac_address: 58:2D:34:10:EC:5F
+    temperature:
+      name: "Xiaomi CGG1 Temperature"
+    humidity:
+      name: "Xiaomi CGG1 Humidity"
+    battery_level:
+      name: "Xiaomi CGG1 Battery Level"
+  - platform: ble_rssi
+    mac_address: 20:DA:22:22:F1:FC
+    name: "Honor Band RSSI"
+
+switch:
+  - platform: gpio
+    name: "visonic_interface_relay_trigger1"
+    pin:
+       number: 27
+       inverted: True
+       mode: OUTPUT_OPEN_DRAIN
+    id: relay1
+  - platform: gpio
+    name: "visonic_interface_relay_trigger2"
+    pin:
+       number: 26
+       inverted: True
+       mode: OUTPUT_OPEN_DRAIN
+    id: relay2
+
+uart:
+  id: uart_bus_visonic
+  baud_rate: 9600
+  tx_pin: 12
+  rx_pin: 14
+  stop_bits: 1
+  data_bits: 8
+  parity: NONE
+
+stream_server:
+#serial_server:
+  id: my_stream
+  uart_id: uart_bus_visonic
+  port: 10077
+
+#custom_component:
+#  - lambda: |-
+#      auto stream_server = new StreamServerComponent(id(uart_bus));
+#      stream_server->set_port(10077);
+#      return {stream_server};

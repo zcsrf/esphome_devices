@@ -1,0 +1,91 @@
+esphome:
+  name: garage-multi
+  friendly_name: garage-multi
+  platformio_options:
+    board_build.extra_flags:
+      - "-DARDUINO_USB_CDC_ON_BOOT=0"  # Override, defaults to '-DARDUINO_USB_CDC_ON_BOOT=1'
+esp32:
+  board: lolin_s2_mini
+  variant: ESP32S2
+  framework:
+    type: arduino
+    version: 2.0.3
+    platform_version: 5.3.0
+
+external_components:
+  - source: github://zcsrf/esphome-stream-server
+
+
+# Enable logging
+logger:
+  baud_rate: 0
+  level: VERBOSE
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "iHeensMKh3E9ZeUHWzcWAOm2VP7lB3UacRfptVrfQg0="
+
+ota:
+  password: "20a9f7e89255961199796d4023ea4ea2"
+
+wifi:
+  power_save_mode: none
+  output_power: 10
+  ssid: "Rede-IOT"
+  password: !secret iot_pass
+  manual_ip:
+    static_ip: 10.200.50.210
+    gateway: 10.200.50.1
+    subnet: 255.255.255.0
+  ap:
+    password: "garage-multi"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+status_led:
+  pin: 15
+
+# Example configuration entry
+uart:
+  - id: uart_pm
+    rx_pin: 3
+    baud_rate: 9600
+  - id: uart_bus
+    tx_pin: 16
+    rx_pin: 18
+    baud_rate: 1200
+
+i2c:
+  - id: bus_a
+    sda: 11
+    scl: 12
+    scan: true
+
+stream_server:
+  uart_id: uart_bus
+
+sensor:
+  - platform: pm1006
+    uart_id: uart_pm
+    pm_2_5:
+      name: "Garage PM 2.5"
+  - platform: scd4x
+    i2c_id: bus_a
+    co2:
+      name: "Garage CO2"
+    temperature:
+      name: "Garage Temperature"
+    humidity:
+      name: "Garage Humidity"
+  - platform: stream_server
+    connection_count:
+      name: Number of connections
+      
+binary_sensor:
+  - platform: stream_server
+    connected:
+      name: Connected

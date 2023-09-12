@@ -1,0 +1,410 @@
+substitutions:
+  name: "aquarium-relay"
+  friendly_name: "Aquarium Relay"
+  project_version: "1.0"
+
+globals:
+  - id: white_lamp_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: need_sync
+    type: boolean
+    restore_value: no
+    initial_value: 'true'
+
+esphome:
+  name: "${name}"
+  name_add_mac_suffix: true
+  on_boot:
+    priority: -100
+    # ...
+    then:
+      - script.execute: lamp_control
+      - script.wait: lamp_control
+
+esp8266:
+  board: esp8285
+  restore_from_flash: false
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "oQLOrK3gGAIyzTYsO2xK+/jVm+Agu47zxjoEyFxrt58="
+
+ota:
+
+logger:
+
+web_server:
+  port: 80
+
+wifi:
+  power_save_mode: none
+  output_power: 10
+  ssid: "Rede-IOT"
+  password: !secret iot_pass
+  manual_ip:
+    static_ip: 10.200.50.213
+    gateway: 10.200.50.1
+    subnet: 255.255.255.0
+    dns1: 10.200.0.254
+    dns2: 8.8.8.8
+  ap:
+    password: "aquarium"
+
+captive_portal:
+
+script:
+  - id: sync_light
+    then:
+      # If 0 - Off, both lights are off
+      - switch.turn_off: relay3
+      - delay: 20s
+      - if:
+          condition:
+            # If at least 1 - High
+            lambda: 'return id(white_lamp_state) > 0;'
+          then:
+            - logger.log: "Bigger than 0"
+            - switch.turn_on: relay3
+      - delay: 300ms
+      - if:
+          condition:
+            # If at least 2 - Mid
+            lambda: 'return id(white_lamp_state) > 1;'
+          then:
+            - logger.log: "Bigger than 1"
+            - switch.turn_off: relay3
+            - delay: 300ms
+            - switch.turn_on: relay3
+      - delay: 300ms
+      - if:
+          condition:
+            # If at least 3 - Night
+            lambda: 'return id(white_lamp_state) > 2;'
+          then:
+            - logger.log: "Bigger than 2"
+            - switch.turn_off: relay3
+            - delay: 300ms
+            - switch.turn_on: relay3
+      - delay: 300ms
+      - lambda: 'id(need_sync) = false;'
+
+  - id: plants_lamp_mode_set
+    parameters:
+      state: int
+    then:
+      - if:
+          condition:
+            lambda: 'return state == 1;'
+          then:
+            - logger.log: 'Enabling Plants Light'
+            - switch.turn_on: relay1
+          else:
+            - logger.log: 'Disabling Plants Light'
+            - switch.turn_off: relay1
+
+  - id: white_lamp_mode_set
+    parameters:
+      state: int
+    then:
+      - lambda: |-
+          ESP_LOGD("white_lamp_mode_set", "%d: %d", state, id(white_lamp_state));
+          if (state > 4 || state < 0) {
+            state = 0;
+          }
+
+      - if:
+          condition:
+            lambda: 'return (id(white_lamp_state) == 0 && state != 0);'
+          then:
+            - lambda: 'id(need_sync) = true;'
+            - delay: 1000ms
+
+      - if:
+          condition:
+            lambda: 'return id(need_sync);'
+          then:
+            - logger.log: "Need To Sync the light!"
+            - script.execute: sync_light
+            - script.wait: sync_light
+      - delay: 1000ms
+      
+      - if:
+          condition:
+            lambda: 'return state == 0;'
+          then:
+            - logger.log: "Tuning Off White Lamp"
+            - switch.turn_off: relay3
+            - lambda: 'id(white_lamp_state) = 0;'
+          else:
+            - while:
+                condition:
+                  - lambda: 'return id(white_lamp_state) != state;'
+                then:
+                  - lambda: |-
+                      if (id(white_lamp_state) == 0) {
+                        id(white_lamp_state) = 1;
+                      }
+                  - logger.log: "White Lamp State does not equal State"
+                  - switch.turn_off: relay3
+                  - delay: 300ms
+                  - switch.turn_on: relay3
+                  - delay: 300ms
+                  - lambda: 'id(white_lamp_state) += 1;'
+                  - lambda: |-
+                      if (id(white_lamp_state) >= 4) {
+                        ESP_LOGD("lamp_state", "%d: %d", state, id(white_lamp_state));
+                        id(white_lamp_state) = 1;
+                      }
+      - lambda: |-
+            ESP_LOGD("lamp_mode_set", "Done - %d: %d", state, id(white_lamp_state));
+### LAMP CONTROL -> SETS THE CORRECT LAMP WORKING MODE (at x time)
+  - id: lamp_control
+    then:
+      # Requires time to be valid! Otherwise it wont work
+      - lambda: |-
+          ESP_LOGD("lamp_control", "Lets do it");
+          auto time = id(sntp_time).now();
+          if (time.is_valid()) {
+            ESP_LOGD("lamp_control", "Time is Valid %d, %d", time.hour, time.minute);
+            if (time.hour > 19 || (time.hour == 19 && time.minute >= 30)) {
+              id(plants_lamp_mode_set)->execute(0);
+            } else if (time.hour > 7 || (time.hour == 7 && time.minute >= 30)) {
+              id(plants_lamp_mode_set)->execute(1);
+            }
+            
+            if (time.hour >= 18) {
+              id(white_lamp_mode_set)->execute(3);
+            } else if (time.hour >= 17) {
+              id(white_lamp_mode_set)->execute(2);
+            } else if (time.hour >= 9) {
+              id(white_lamp_mode_set)->execute(1);
+            } else if (time.hour >= 8) {
+              id(white_lamp_mode_set)->execute(2);
+            } 
+          }
+  - id: co2_control
+    then:
+      # Requires time to be valid! Otherwise it wont work
+      - lambda: |-
+          ESP_LOGD("co2_control", "Lets do it");
+          auto time = id(sntp_time).now();
+          if (time.is_valid()) {
+            ESP_LOGD("co2_control", "Time is Valid %d, %d", time.hour, time.minute);
+            if (time.hour > 17 || (time.hour == 17 && time.minute >= 30)) {
+              id(relay4).turn_off();
+            } else if (time.hour > 6 || (time.hour == 6 && time.minute >= 30)) {
+              id(relay4).turn_on();
+            }
+          }
+
+
+time:
+  - platform: sntp
+    id: sntp_time
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized system clock"
+        - script.execute: lamp_control
+        - script.wait: lamp_control
+        - script.execute: co2_control
+        - script.wait: co2_control
+    on_time:
+      # lamp_state = 2
+      - hours: 8
+        minutes: 0
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      # Full lamp_state = 3
+      - hours: 9
+        minutes: 0
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      # Reduced lamp_state = 2
+      - hours: 17
+        minutes: 0
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      # Reduced lamp_state = 1
+      - hours: 18
+        minutes: 0
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      # Plant lamp ON
+      - hours: 7
+        minutes: 30
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      # Plant lamp OFF
+      - hours: 19
+        minutes: 30
+        seconds: 0  
+        then:
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      - hours: 12
+        minutes: 0
+        seconds: 0
+        then:
+          - lambda: 'id(need_sync) = true;'
+          - script.execute: lamp_control
+          - script.wait: lamp_control
+      - hours: 6
+        minutes: 30
+        seconds: 0  
+        then:
+          - script.execute: co2_control
+          - script.wait: co2_control
+      - hours: 18
+        minutes: 30
+        seconds: 0
+        then:
+          - script.execute: co2_control
+          - script.wait: co2_control
+
+binary_sensor:
+  - platform: status
+    name: "${friendly_name} Status"
+
+sensor:
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+    disabled_by_default: true
+
+  - platform: wifi_signal
+    name: "${friendly_name} WiFi Signal"
+    update_interval: 60s
+    
+  - platform: template
+    name: "White Lamp State"
+    lambda: |-
+        return id(white_lamp_state);
+    update_interval: 10s
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "${friendly_name} Restart"
+  - platform: template
+    name: "Manual Sync Button"
+    id: manual_sync_button
+    on_press:
+      - script.execute: sync_light
+      - script.wait: sync_light
+
+switch:
+  - platform: gpio
+    name: "${friendly_name} - 1"
+    pin: GPIO16
+    id: relay1
+
+  - platform: gpio
+    name: "${friendly_name} - 2"
+    pin: GPIO14
+    id: relay2
+
+  - platform: gpio
+    name: "${friendly_name} - 3"
+    pin: GPIO12
+    id: relay3
+
+  - platform: gpio
+    name: "${friendly_name} - 4"
+    pin: GPIO13
+    id: relay4
+
+light:
+  - platform: status_led
+    name: "${friendly_name} Status LED"
+    disabled_by_default: true
+    pin:
+      inverted: true
+      number: GPIO5
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} IP Address"
+      disabled_by_default: true
+
+select:
+  - platform: template
+    name: White Light Mode
+    id: white_light_mode
+    options:
+     - "Off"
+     - "High"
+     - "Mid"
+     - "Night"
+     - "Auto"
+    initial_option: "Auto"
+    optimistic: true
+    on_value:
+      then:
+        - logger.log:
+            format: "Chosen option: %s"
+            args: ["x.c_str()"]
+        - if: 
+            condition:
+              lambda: 'return id(white_light_mode).state == "Auto";'
+            then:
+              - logger.log: "White going Auto"
+              - script.execute: lamp_control
+              - script.wait: lamp_control 
+            else:
+              - lambda: |-
+                  if (id(white_light_mode).state == "Off") {
+                    id(white_lamp_mode_set)->execute(0);
+                  } else if(id(white_light_mode).state == "High") {
+                    id(white_lamp_mode_set)->execute(1);
+                  } else if(id(white_light_mode).state == "Mid") {
+                    id(white_lamp_mode_set)->execute(2);
+                  }  else if(id(white_light_mode).state == "Night") {
+                    id(white_lamp_mode_set)->execute(3);
+                  }
+              - delay: 1h
+              - script.execute: lamp_control
+              - script.wait: lamp_control 
+  - platform: template
+    name: Plants Light Mode
+    id: plants_light_mode
+    options:
+     - "Off"
+     - "Plants"
+     - "Auto"
+    initial_option: "Auto"
+    optimistic: true
+    on_value:
+      then:
+        - logger.log:
+            format: "Chosen option: %s"
+            args: ["x.c_str()"]
+        - if:
+            condition:
+              lambda: 'return id(plants_light_mode).state == "Auto";'
+            then:
+              - logger.log: "Plants going Auto"
+              - script.execute: lamp_control
+              - script.wait: lamp_control 
+            else:
+              - lambda: |-
+                  if (id(plants_light_mode).state == "Off") {
+                    id(plants_lamp_mode_set)->execute(0);
+                  } else {
+                    id(plants_lamp_mode_set)->execute(1);
+                  }
+              - delay: 1h
+              - script.execute: lamp_control
+              - script.wait: lamp_control 
